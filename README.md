@@ -15,8 +15,10 @@ Implementacao inicial da Feature 1: autenticacao e sessao (Login + JWT access/re
 
 ## Backend
 
-1. Copie `.env.example` para `.env` em `backend`.
-2. Instale dependencias:
+1. Copie `.env.example` para `.env` em `backend` e ajuste as variaveis (DATABASE_URL, JWT_SECRET).
+2. Crie o ambiente virtual e instale dependencias:
+   - `python -m venv .venv`
+   - `.venv\Scripts\Activate.ps1` (Windows) ou `source .venv/bin/activate` (Linux/Mac)
    - `pip install -e .[dev]`
 3. Rode API:
    - `uvicorn app.main:app --reload --port 8000`
@@ -32,10 +34,13 @@ Implementacao inicial da Feature 1: autenticacao e sessao (Login + JWT access/re
 ## Frontend
 
 1. Copie `.env.example` para `.env` em `frontend`.
+   - O valor padrao `VITE_API_BASE_URL=/api/v1` ja esta correto (proxy do Vite aponta para o backend).
 2. Instale dependencias:
    - `npm install`
 3. Rode app:
    - `npm run dev`
+
+> O Vite esta configurado com proxy: requisicoes para `/api` sao redirecionadas para `http://localhost:8000` automaticamente, sem problemas de CORS.
 
 ## Fluxo de autenticacao
 
