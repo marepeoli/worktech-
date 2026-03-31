@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_principal, require_roles
 from app.db.session import get_db
+from app.repositories.auth_repository import AuthRepository
 from app.schemas.auth import LoginRequest, RefreshRequest, TokenResponse
 from app.services.auth_service import AuthService
 
@@ -22,8 +23,26 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)) -> TokenResp
 
 
 @router.get("/me")
-def me(principal: dict = Depends(get_current_principal)) -> dict:
-    return principal
+def me(principal: dict = Depends(get_current_principal), db: Session = Depends(get_db)) -> dict:
+    repo = AuthRepository(db)
+    nome = principal["sub"]
+
+    if principal["sub"].startswith("admin:"):
+        try:
+            admin_id = int(principal["sub"].split(":", maxsplit=1)[1])
+            admin = repo.find_admin_by_id(admin_id)
+            nome = admin.username if admin else "Admin"
+        except (ValueError, IndexError):
+            nome = "Admin"
+    elif principal["sub"].startswith("user:"):
+        try:
+            user_id = int(principal["sub"].split(":", maxsplit=1)[1])
+            user = repo.find_user_by_id(user_id)
+            nome = user.nome if user else "Atleta"
+        except (ValueError, IndexError):
+            nome = "Atleta"
+
+    return {"sub": principal["sub"], "role": principal["role"], "nome": nome}
 
 
 @router.get("/admin-check")

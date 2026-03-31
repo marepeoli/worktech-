@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 import { api } from "../api/http";
 import { clearSession, getAccessToken, getStoredRole, saveSession } from "./storage";
@@ -19,11 +19,26 @@ function buildInitialPrincipal(): Principal | null {
   if (!token || !role) {
     return null;
   }
-  return { sub: "session", role };
+  return { sub: "session", role, nome: role === "ADMIN" ? "Admin" : "Atleta" };
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [principal, setPrincipal] = useState<Principal | null>(buildInitialPrincipal());
+
+  useEffect(() => {
+    const token = getAccessToken();
+    if (!token) {
+      return;
+    }
+
+    api
+      .get<Principal>("/auth/me")
+      .then((me) => setPrincipal(me.data))
+      .catch(() => {
+        clearSession();
+        setPrincipal(null);
+      });
+  }, []);
 
   const login = async (payload: LoginPayload): Promise<void> => {
     const response = await api.post<TokenResponse>("/auth/login", payload);

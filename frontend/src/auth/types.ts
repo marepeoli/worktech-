@@ -15,4 +15,5 @@ export type TokenResponse = {
 export type Principal = {
   sub: string;
   role: Role;
+  nome?: string;
 };

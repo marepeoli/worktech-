@@ -15,3 +15,11 @@ class AuthRepository:
     def find_user_by_email(self, email: str) -> Usuario | None:
         stmt = select(Usuario).where(Usuario.email == email)
         return self.db.scalar(stmt)
+
+    def find_admin_by_id(self, admin_id: int) -> LoginUser | None:
+        stmt = select(LoginUser).where(LoginUser.id == admin_id)
+        return self.db.scalar(stmt)
+
+    def find_user_by_id(self, user_id: int) -> Usuario | None:
+        stmt = select(Usuario).where(Usuario.id == user_id)
+        return self.db.scalar(stmt)

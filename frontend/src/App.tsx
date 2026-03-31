@@ -5,6 +5,11 @@ import { RoleRoute } from "./components/RoleRoute";
 import { LoginPage } from "./pages/LoginPage";
 import { HomePage } from "./pages/HomePage";
 import { AdminPage } from "./pages/AdminPage";
+import { ModalidadesPage } from "./pages/ModalidadesPage";
+import { EventsPage } from "./pages/EventsPage";
+import { RecommendationsPage } from "./pages/RecommendationsPage";
+import { ProfilePage } from "./pages/ProfilePage";
+import { NotificationsPage } from "./pages/NotificationsPage";
 
 export function App() {
   return (
@@ -25,6 +30,46 @@ export function App() {
             <RoleRoute allowedRoles={["ADMIN"]}>
               <AdminPage />
             </RoleRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/modalidades"
+        element={
+          <ProtectedRoute>
+            <ModalidadesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/eventos"
+        element={
+          <ProtectedRoute>
+            <EventsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/recomendacoes"
+        element={
+          <ProtectedRoute>
+            <RecommendationsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/perfil"
+        element={
+          <ProtectedRoute>
+            <ProfilePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/notificacoes"
+        element={
+          <ProtectedRoute>
+            <NotificationsPage />
           </ProtectedRoute>
         }
       />
