@@ -84,11 +84,11 @@ export function NotificationsPage() {
             <button onClick={() => navigate("/home")} type="button" style={{ background: "transparent", color: "#43E07E", padding: 0, display: "flex", alignItems: "center" }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 6L9 12L15 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
-            <button onClick={() => navigate("/home")} type="button" style={{ background: "transparent", color: "#43E07E", fontSize: 18, fontWeight: 700, textDecoration: "underline", padding: 0, whiteSpace: "nowrap" }}>
+            <button onClick={() => navigate("/home")} type="button" style={{ background: "transparent", color: "#43E07E", fontSize: 18, fontWeight: 700, textDecoration: "none", padding: 0, whiteSpace: "nowrap" }}>
               Notificações
             </button>
           </div>
-          <div style={{ color: "#E0A443", fontSize: 14, fontWeight: 400, marginTop: 10 }}>
+          <div style={{ color: "#E0A443", fontSize: 14, fontWeight: 400, marginTop: 10, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             Atualizações mais recentes para você.
           </div>
         </div>
@@ -191,7 +191,7 @@ export function NotificationsPage() {
 
         <div style={{ width: 393, height: 59, left: 0, bottom: 0, position: "absolute", background: "#E0A443", borderRadius: "0 0 20px 20px", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "space-around" }}>
           <FaHome color="#fff" size={27} style={{ cursor: "pointer" }} onClick={() => navigate("/home")} />
-          <FaRegCalendarAlt color="#fff" size={29} style={{ cursor: "pointer" }} />
+          <FaRegCalendarAlt color="#fff" size={29} style={{ cursor: "pointer" }} onClick={() => navigate("/checkin")} />
           <FaBookmark color="#fff" size={28} style={{ cursor: "pointer" }} onClick={() => navigate("/eventos")} />
           <FaUsers color="#fff" size={31} style={{ cursor: "pointer" }} onClick={() => navigate("/modalidades")} />
         </div>

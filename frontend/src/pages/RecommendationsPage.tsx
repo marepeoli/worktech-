@@ -131,11 +131,11 @@ export function RecommendationsPage() {
             <button onClick={() => navigate("/home")} type="button" style={{ background: "transparent", color: "#43E07E", padding: 0, display: "flex", alignItems: "center" }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 6L9 12L15 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
-            <button onClick={() => navigate("/home")} type="button" style={{ background: "transparent", color: "#43E07E", fontSize: 18, fontWeight: 700, textDecoration: "underline", padding: 0, whiteSpace: "nowrap" }}>
+            <button onClick={() => navigate("/home")} type="button" style={{ background: "transparent", color: "#43E07E", fontSize: 18, fontWeight: 700, textDecoration: "none", padding: 0, whiteSpace: "nowrap" }}>
               Recomendações
             </button>
           </div>
-          <div style={{ color: "#E0A443", fontSize: 13, fontWeight: 400, marginTop: 10, whiteSpace: "nowrap" }}>
+          <div style={{ color: "#E0A443", fontSize: 13, fontWeight: 400, marginTop: 10, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             Aprimore sua técnica, preparo físico e desempenho em jogo.
           </div>
         </div>

@@ -19,7 +19,8 @@ function buildInitialPrincipal(): Principal | null {
   if (!token || !role) {
     return null;
   }
-  return { sub: "session", role, nome: role === "ADMIN" ? "Admin" : "Atleta" };
+  const nome = role === "ADMIN" ? "Admin" : role === "PROFESSOR" ? "Professor" : "Atleta";
+  return { sub: "session", role, nome };
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

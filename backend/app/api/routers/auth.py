@@ -34,6 +34,13 @@ def me(principal: dict = Depends(get_current_principal), db: Session = Depends(g
             nome = admin.username if admin else "Admin"
         except (ValueError, IndexError):
             nome = "Admin"
+    elif principal["sub"].startswith("professor:"):
+        try:
+            professor_id = int(principal["sub"].split(":", maxsplit=1)[1])
+            professor = repo.find_admin_by_id(professor_id)
+            nome = professor.username if professor else "Professor"
+        except (ValueError, IndexError):
+            nome = "Professor"
     elif principal["sub"].startswith("user:"):
         try:
             user_id = int(principal["sub"].split(":", maxsplit=1)[1])

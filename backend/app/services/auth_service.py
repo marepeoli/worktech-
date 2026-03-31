@@ -18,7 +18,10 @@ class AuthService:
     def login(self, login: str, senha: str) -> dict:
         admin = self.repo.find_admin_by_username(login)
         if admin and verify_password(senha, admin.password):
-            return self._build_tokens(subject=f"admin:{admin.id}", role="ADMIN")
+            lowered = admin.username.strip().lower()
+            role = "PROFESSOR" if lowered.startswith("prof") else "ADMIN"
+            subject = f"professor:{admin.id}" if role == "PROFESSOR" else f"admin:{admin.id}"
+            return self._build_tokens(subject=subject, role=role)
 
         user = self.repo.find_user_by_email(login)
         if user and verify_password(senha, user.senha):

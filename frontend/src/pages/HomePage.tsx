@@ -206,7 +206,7 @@ export function HomePage() {
         {/* Shortcuts: Check In | Modalidades | Eventos */}
         <div style={{ width: 323, left: 35, top: 150, position: "absolute", display: "flex", flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
-            <div onClick={() => navigate("/home")} style={{ width: 33, height: 33, background: "#43E07E", borderRadius: 24, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 8, cursor: "pointer" }}>
+            <div onClick={() => navigate("/checkin")} style={{ width: 33, height: 33, background: "#43E07E", borderRadius: 24, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 8, cursor: "pointer" }}>
               <FaRegCalendarAlt color="#fff" size={18} />
             </div>
             <div style={{ color: "#43E07E", fontSize: 13, fontWeight: 500 }}>Check In</div>
@@ -297,7 +297,7 @@ export function HomePage() {
         {/* Bottom nav */}
         <div style={{ width: 393, height: 59, left: 0, top: 793, position: "absolute", background: "#E0A443", borderRadius: "0 0 20px 20px", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "space-around" }}>
           <FaHome color="#fff" size={27} style={{ cursor: "pointer" }} onClick={() => navigate("/home")} />
-          <FaRegCalendarAlt color="#fff" size={29} style={{ cursor: "pointer" }} />
+          <FaRegCalendarAlt color="#fff" size={29} style={{ cursor: "pointer" }} onClick={() => navigate("/checkin")} />
           <FaBookmark color="#fff" size={28} style={{ cursor: "pointer" }} onClick={() => navigate("/eventos")} />
           <FaUsers color="#fff" size={31} style={{ cursor: "pointer" }} onClick={() => navigate("/modalidades")} />
         </div>

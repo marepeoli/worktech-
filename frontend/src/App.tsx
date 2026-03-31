@@ -10,6 +10,7 @@ import { EventsPage } from "./pages/EventsPage";
 import { RecommendationsPage } from "./pages/RecommendationsPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { NotificationsPage } from "./pages/NotificationsPage";
+import { CheckinPage } from "./pages/CheckinPage";
 
 export function App() {
   return (
@@ -30,6 +31,14 @@ export function App() {
             <RoleRoute allowedRoles={["ADMIN"]}>
               <AdminPage />
             </RoleRoute>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/checkin"
+        element={
+          <ProtectedRoute>
+            <CheckinPage />
           </ProtectedRoute>
         }
       />

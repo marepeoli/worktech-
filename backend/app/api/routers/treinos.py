@@ -1,4 +1,4 @@
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -6,7 +6,19 @@ from sqlalchemy.orm import Session
 
 from app.core.security import verify_password
 from app.core.deps import get_current_principal, require_roles
-from app.db.models import Checkin, Event, MatriculaModalidade, MatriculaTreino, NotificacaoLeitura, Recommendation, Treino, Usuario
+from app.db.models import (
+    Checkin,
+    CheckinCancelamento,
+    Event,
+    MatriculaModalidade,
+    MatriculaTreino,
+    NotificacaoLeitura,
+    NotificacaoProfessor,
+    PresencaTreino,
+    Recommendation,
+    Treino,
+    Usuario,
+)
 from app.db.session import get_db
 
 router = APIRouter(tags=["treinos"])
@@ -74,6 +86,14 @@ class AthleteMeUpdateIn(BaseModel):
 
 class CheckinIn(BaseModel):
     treino_id: int
+
+
+class CancelCheckinIn(BaseModel):
+    justificativa: str = Field(min_length=5)
+
+
+class PresencaUpdateIn(BaseModel):
+    status: str = Field(min_length=7)
 
 
 class NotificacaoLeituraIn(BaseModel):
@@ -205,6 +225,43 @@ def _extract_user_id(principal_sub: str) -> int | None:
         return None
 
 
+def _is_professor_or_admin(principal: dict) -> bool:
+    return principal["role"] in {"PROFESSOR", "ADMIN"}
+
+
+def _treino_datetime(treino: Treino) -> datetime:
+    return datetime.combine(treino.data, treino.hora)
+
+
+def _cancelamento_map(checkin_ids: list[int], db: Session) -> dict[int, CheckinCancelamento]:
+    if not checkin_ids:
+        return {}
+    rows = db.query(CheckinCancelamento).filter(CheckinCancelamento.checkin_id.in_(checkin_ids)).all()
+    return {row.checkin_id: row for row in rows}
+
+
+def _presenca_map(treino_id: int, db: Session) -> dict[int, PresencaTreino]:
+    rows = db.query(PresencaTreino).filter(PresencaTreino.treino_id == treino_id).all()
+    return {row.usuario_id: row for row in rows}
+
+
+def _assert_checkin_aberto_para_confirmacao(treino: Treino) -> None:
+    if _treino_datetime(treino) <= datetime.now():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Check-in permitido apenas para aulas futuras",
+        )
+
+
+def _assert_cancelamento_no_prazo(treino: Treino) -> None:
+    limite_cancelamento = _treino_datetime(treino) - timedelta(hours=1)
+    if datetime.now() > limite_cancelamento:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cancelamento permitido apenas ate 1 hora antes da aula",
+        )
+
+
 def _get_user_modalidades(user_id: int, db: Session) -> list[str]:
     modalidades_legacy = [
         row[0]
@@ -266,6 +323,55 @@ def get_dias_checkin(
     return sabados
 
 
+@router.get("/checkins/calendario-me")
+def get_calendario_checkin_me(
+    principal: dict = Depends(get_current_principal),
+    db: Session = Depends(get_db),
+):
+    role = principal.get("role")
+    if role not in {"USER", "ADMIN"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Perfil sem acesso ao calendario de check-in")
+
+    user_id = _extract_user_id(principal["sub"]) if role == "USER" else None
+    if role == "USER" and user_id is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Somente atletas podem consultar o calendario")
+
+    hoje = date.today()
+    fim = hoje + timedelta(days=60)
+    treinos = (
+        _query_treinos_visiveis(principal, db)
+        .filter(Treino.data >= hoje, Treino.data <= fim)
+        .order_by(Treino.data.asc(), Treino.hora.asc())
+        .all()
+    )
+
+    checkins = []
+    if user_id is not None:
+        checkins = (
+            db.query(Checkin)
+            .filter(Checkin.usuario_id == user_id, Checkin.treino_id.in_([t.id for t in treinos]))
+            .all()
+        )
+    checkin_by_treino = {row.treino_id: row for row in checkins}
+    cancelamentos = _cancelamento_map([row.id for row in checkins], db)
+
+    items = []
+    for treino in treinos:
+        checkin = checkin_by_treino.get(treino.id)
+        cancelado = bool(checkin and cancelamentos.get(checkin.id))
+        limite_cancelamento = _treino_datetime(treino) - timedelta(hours=1)
+        items.append(
+            {
+                **_treino_to_dict(treino),
+                "checkin_confirmado": bool(checkin and not cancelado),
+                "pode_cancelar": bool(user_id is not None and datetime.now() <= limite_cancelamento),
+                "limite_cancelamento": limite_cancelamento.isoformat(),
+                "cancelado": cancelado,
+            }
+        )
+    return items
+
+
 @router.get("/checkins/me")
 def list_me_checkins(
     principal: dict = Depends(get_current_principal),
@@ -281,7 +387,26 @@ def list_me_checkins(
         .order_by(Checkin.id.desc())
         .all()
     )
-    return [_checkin_to_dict(row) for row in rows]
+    cancelamentos = _cancelamento_map([row.id for row in rows], db)
+    treinos_map = {
+        treino.id: treino
+        for treino in db.query(Treino)
+        .filter(Treino.id.in_([row.treino_id for row in rows]))
+        .all()
+    }
+    response = []
+    for row in rows:
+        treino = treinos_map.get(row.treino_id)
+        cancelamento = cancelamentos.get(row.id)
+        item = {
+            **_checkin_to_dict(row),
+            "cancelado": bool(cancelamento),
+            "justificativa_cancelamento": cancelamento.justificativa if cancelamento else None,
+        }
+        if treino:
+            item["treino"] = _treino_to_dict(treino)
+        response.append(item)
+    return response
 
 
 @router.get("/notificacoes/me")
@@ -431,6 +556,7 @@ def create_me_checkin(
     treino = _query_treinos_visiveis(principal, db).filter(Treino.id == payload.treino_id).first()
     if not treino:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Treino nao encontrado")
+    _assert_checkin_aberto_para_confirmacao(treino)
 
     existing = (
         db.query(Checkin)
@@ -438,18 +564,26 @@ def create_me_checkin(
         .first()
     )
     if existing:
+        cancelamento = db.query(CheckinCancelamento).filter(CheckinCancelamento.checkin_id == existing.id).first()
+        if cancelamento:
+            db.delete(cancelamento)
+            db.add(NotificacaoProfessor(treino_id=treino.id, usuario_id=user_id, acao="checkin"))
+            db.commit()
         return _checkin_to_dict(existing)
 
     row = Checkin(usuario_id=user_id, treino_id=payload.treino_id)
     db.add(row)
+    db.flush()
+    db.add(NotificacaoProfessor(treino_id=treino.id, usuario_id=user_id, acao="checkin"))
     db.commit()
     db.refresh(row)
     return _checkin_to_dict(row)
 
 
-@router.delete("/checkins/me/{treino_id}")
-def delete_me_checkin(
+@router.post("/checkins/me/{treino_id}/cancelar")
+def cancel_me_checkin(
     treino_id: int,
+    payload: CancelCheckinIn,
     principal: dict = Depends(get_current_principal),
     db: Session = Depends(get_db),
 ):
@@ -457,13 +591,194 @@ def delete_me_checkin(
     if user_id is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Somente atletas podem cancelar check-in")
 
+    treino = _query_treinos_visiveis(principal, db).filter(Treino.id == treino_id).first()
+    if not treino:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Treino nao encontrado")
+    _assert_cancelamento_no_prazo(treino)
+
     row = db.query(Checkin).filter(Checkin.usuario_id == user_id, Checkin.treino_id == treino_id).first()
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Check-in nao encontrado")
 
-    db.delete(row)
+    existing_cancel = db.query(CheckinCancelamento).filter(CheckinCancelamento.checkin_id == row.id).first()
+    if existing_cancel:
+        existing_cancel.justificativa = payload.justificativa.strip()
+    else:
+        db.add(CheckinCancelamento(checkin_id=row.id, justificativa=payload.justificativa.strip()))
+    db.add(
+        NotificacaoProfessor(
+            treino_id=treino_id,
+            usuario_id=user_id,
+            acao="cancelamento",
+            justificativa=payload.justificativa.strip(),
+        )
+    )
     db.commit()
     return {"status": "ok"}
+
+
+@router.delete("/checkins/me/{treino_id}")
+def delete_me_checkin_legacy(
+    treino_id: int,
+    principal: dict = Depends(get_current_principal),
+    db: Session = Depends(get_db),
+):
+    return cancel_me_checkin(
+        treino_id=treino_id,
+        payload=CancelCheckinIn(justificativa="Cancelamento sem justificativa informada"),
+        principal=principal,
+        db=db,
+    )
+
+
+@router.get("/checkins/treinos/{treino_id}/confirmados")
+def list_confirmados_treino(
+    treino_id: int,
+    principal: dict = Depends(get_current_principal),
+    db: Session = Depends(get_db),
+):
+    treino = _query_treinos_visiveis(principal, db).filter(Treino.id == treino_id).first()
+    if not treino and not _is_professor_or_admin(principal):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Treino nao encontrado")
+    if not treino:
+        treino = db.query(Treino).filter(Treino.id == treino_id).first()
+    if not treino:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Treino nao encontrado")
+
+    rows = db.query(Checkin).filter(Checkin.treino_id == treino_id).all()
+    cancelamentos = _cancelamento_map([row.id for row in rows], db)
+    ativos = [row for row in rows if row.id not in cancelamentos]
+
+    usuarios = {
+        user.id: user
+        for user in db.query(Usuario).filter(Usuario.id.in_([row.usuario_id for row in ativos])).all()
+    }
+
+    return [
+        {
+            "usuario_id": row.usuario_id,
+            "nome": usuarios[row.usuario_id].nome if row.usuario_id in usuarios else f"Atleta {row.usuario_id}",
+            "email": usuarios[row.usuario_id].email if row.usuario_id in usuarios else None,
+            "treino_id": row.treino_id,
+        }
+        for row in ativos
+    ]
+
+
+@router.get("/professor/notificacoes")
+def list_professor_notificacoes(
+    _: dict = Depends(require_roles("PROFESSOR", "ADMIN")),
+    db: Session = Depends(get_db),
+):
+    rows = db.query(NotificacaoProfessor).order_by(NotificacaoProfessor.id.desc()).limit(60).all()
+    usuarios = {
+        user.id: user
+        for user in db.query(Usuario).filter(Usuario.id.in_([row.usuario_id for row in rows])).all()
+    }
+    treinos = {
+        treino.id: treino
+        for treino in db.query(Treino).filter(Treino.id.in_([row.treino_id for row in rows])).all()
+    }
+    return [
+        {
+            "id": row.id,
+            "acao": row.acao,
+            "justificativa": row.justificativa,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "treino": _treino_to_dict(treinos[row.treino_id]) if row.treino_id in treinos else {"id": row.treino_id},
+            "aluno": {
+                "id": row.usuario_id,
+                "nome": usuarios[row.usuario_id].nome if row.usuario_id in usuarios else f"Atleta {row.usuario_id}",
+                "email": usuarios[row.usuario_id].email if row.usuario_id in usuarios else None,
+            },
+        }
+        for row in rows
+    ]
+
+
+@router.get("/professor/treinos")
+def list_treinos_professor(
+    _: dict = Depends(require_roles("PROFESSOR", "ADMIN")),
+    db: Session = Depends(get_db),
+):
+    rows = db.query(Treino).order_by(Treino.data.asc(), Treino.hora.asc()).all()
+    return [_treino_to_dict(row) for row in rows]
+
+
+@router.get("/professor/treinos/{treino_id}/presenca")
+def list_presenca_treino(
+    treino_id: int,
+    _: dict = Depends(require_roles("PROFESSOR", "ADMIN")),
+    db: Session = Depends(get_db),
+):
+    treino = db.query(Treino).filter(Treino.id == treino_id).first()
+    if not treino:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Treino nao encontrado")
+
+    checkins = db.query(Checkin).filter(Checkin.treino_id == treino_id).all()
+    cancelamentos = _cancelamento_map([row.id for row in checkins], db)
+    ativos = [row for row in checkins if row.id not in cancelamentos]
+    usuarios = {
+        user.id: user
+        for user in db.query(Usuario).filter(Usuario.id.in_([row.usuario_id for row in ativos])).all()
+    }
+    presencas = _presenca_map(treino_id, db)
+
+    return [
+        {
+            "usuario_id": row.usuario_id,
+            "nome": usuarios[row.usuario_id].nome if row.usuario_id in usuarios else f"Atleta {row.usuario_id}",
+            "email": usuarios[row.usuario_id].email if row.usuario_id in usuarios else None,
+            "status_presenca": presencas[row.usuario_id].status if row.usuario_id in presencas else "PENDENTE",
+        }
+        for row in ativos
+    ]
+
+
+@router.put("/professor/treinos/{treino_id}/presenca/{usuario_id}")
+def update_presenca_treino(
+    treino_id: int,
+    usuario_id: int,
+    payload: PresencaUpdateIn,
+    principal: dict = Depends(require_roles("PROFESSOR", "ADMIN")),
+    db: Session = Depends(get_db),
+):
+    normalized_status = payload.status.strip().upper()
+    if normalized_status not in {"PRESENTE", "AUSENTE"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Status invalido. Use PRESENTE ou AUSENTE")
+
+    treino = db.query(Treino).filter(Treino.id == treino_id).first()
+    if not treino:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Treino nao encontrado")
+
+    checkin = db.query(Checkin).filter(Checkin.treino_id == treino_id, Checkin.usuario_id == usuario_id).first()
+    if not checkin:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aluno nao esta confirmado neste treino")
+
+    cancelado = db.query(CheckinCancelamento).filter(CheckinCancelamento.checkin_id == checkin.id).first()
+    if cancelado:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nao e possivel marcar presenca de check-in cancelado")
+
+    presenca = (
+        db.query(PresencaTreino)
+        .filter(PresencaTreino.treino_id == treino_id, PresencaTreino.usuario_id == usuario_id)
+        .first()
+    )
+    if presenca:
+        presenca.status = normalized_status
+        presenca.professor_sub = principal["sub"]
+    else:
+        db.add(
+            PresencaTreino(
+                treino_id=treino_id,
+                usuario_id=usuario_id,
+                status=normalized_status,
+                professor_sub=principal["sub"],
+            )
+        )
+
+    db.commit()
+    return {"status": "ok", "status_presenca": normalized_status}
 
 
 @router.get("/modalidades")

@@ -91,6 +91,39 @@ class Checkin(Base):
     created_at: Mapped[datetime]
 
 
+class CheckinCancelamento(Base):
+    __tablename__ = "checkins_cancelamentos"
+    __table_args__ = (UniqueConstraint("checkin_id", name="uq_cancelamento_checkin"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    checkin_id: Mapped[int] = mapped_column(ForeignKey("checkins.id"), nullable=False)
+    justificativa: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime]
+
+
+class PresencaTreino(Base):
+    __tablename__ = "presencas_treino"
+    __table_args__ = (UniqueConstraint("usuario_id", "treino_id", name="uq_presenca_usuario_treino"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    usuario_id: Mapped[int] = mapped_column(ForeignKey("usuario.id"), nullable=False)
+    treino_id: Mapped[int] = mapped_column(ForeignKey("treinos.id"), nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    professor_sub: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime]
+
+
+class NotificacaoProfessor(Base):
+    __tablename__ = "notificacoes_professor"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    treino_id: Mapped[int] = mapped_column(ForeignKey("treinos.id"), nullable=False)
+    usuario_id: Mapped[int] = mapped_column(ForeignKey("usuario.id"), nullable=False)
+    acao: Mapped[str] = mapped_column(Text, nullable=False)
+    justificativa: Mapped[str] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime]
+
+
 class NotificacaoLeitura(Base):
     __tablename__ = "notificacoes_leitura"
     __table_args__ = (UniqueConstraint("usuario_id", "referencia", name="uq_notif_leitura_usuario_ref"),)
