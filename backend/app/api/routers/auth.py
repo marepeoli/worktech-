@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_principal, require_roles
 from app.db.session import get_db
 from app.repositories.auth_repository import AuthRepository
-from app.schemas.auth import LoginRequest, RefreshRequest, TokenResponse
+from app.schemas.auth import ForgotPasswordRequest, ForgotPasswordResponse, LoginRequest, RefreshRequest, TokenResponse
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -20,6 +20,12 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse
 def refresh(payload: RefreshRequest, db: Session = Depends(get_db)) -> TokenResponse:
     service = AuthService(db)
     return TokenResponse(**service.refresh(payload.refresh_token))
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)) -> ForgotPasswordResponse:
+    service = AuthService(db)
+    return ForgotPasswordResponse(**service.forgot_password(payload.login, payload.nova_senha))
 
 
 @router.get("/me")

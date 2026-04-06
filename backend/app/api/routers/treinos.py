@@ -2,6 +2,8 @@ from datetime import date, datetime, time, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import and_, extract, or_, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.security import verify_password
@@ -34,6 +36,16 @@ DIAS_SEMANA = {
     "sabado": "Sabado",
     "sábado": "Sabado",
     "domingo": "Domingo",
+}
+
+DIAS_SEMANA_TO_DOW = {
+    "Segunda": 1,
+    "Terca": 2,
+    "Quarta": 3,
+    "Quinta": 4,
+    "Sexta": 5,
+    "Sabado": 6,
+    "Domingo": 0,
 }
 
 
@@ -225,6 +237,33 @@ def _extract_user_id(principal_sub: str) -> int | None:
         return None
 
 
+def _legacy_find_checkin(db: Session, *, user_email: str, treino_id: int):
+    return db.execute(
+        text(
+            """
+            SELECT id, treino_id
+            FROM checkins
+            WHERE usuario_email = :user_email AND treino_id = :treino_id
+            LIMIT 1
+            """
+        ),
+        {"user_email": user_email, "treino_id": treino_id},
+    ).first()
+
+
+def _legacy_create_checkin(db: Session, *, user_email: str, treino_id: int):
+    return db.execute(
+        text(
+            """
+            INSERT INTO checkins (treino_id, usuario_email, timestamp)
+            VALUES (:treino_id, :user_email, NOW())
+            RETURNING id
+            """
+        ),
+        {"treino_id": treino_id, "user_email": user_email},
+    ).first()
+
+
 def _is_professor_or_admin(principal: dict) -> bool:
     return principal["role"] in {"PROFESSOR", "ADMIN"}
 
@@ -278,6 +317,16 @@ def _get_user_modalidades(user_id: int, db: Session) -> list[str]:
     return sorted({*modalidades_legacy, *modalidades_dia})
 
 
+def _get_user_matriculas_treino(user_id: int, db: Session) -> list[tuple[str, str]]:
+    rows = (
+        db.query(MatriculaTreino.modalidade, MatriculaTreino.dia_semana)
+        .filter(MatriculaTreino.usuario_id == user_id)
+        .all()
+    )
+    # Remove duplicidades preservando pares modalidade/dia.
+    return sorted({(row[0], row[1]) for row in rows if row[0] and row[1]})
+
+
 def _query_treinos_visiveis(principal: dict, db: Session):
     query = db.query(Treino)
 
@@ -285,6 +334,23 @@ def _query_treinos_visiveis(principal: dict, db: Session):
         user_id = _extract_user_id(principal["sub"])
         if user_id is None:
             return query.filter(Treino.id == -1)
+
+        matriculas_treino = _get_user_matriculas_treino(user_id, db)
+        if matriculas_treino:
+            condicoes = []
+            for modalidade, dia_semana in matriculas_treino:
+                dow = DIAS_SEMANA_TO_DOW.get(dia_semana)
+                if dow is None:
+                    continue
+                condicoes.append(
+                    and_(
+                        Treino.modalidade == modalidade,
+                        extract("dow", Treino.data) == dow,
+                    )
+                )
+
+            if condicoes:
+                return query.filter(or_(*condicoes))
 
         modalidades = _get_user_modalidades(user_id, db)
         if not modalidades:
@@ -301,26 +367,43 @@ def get_dias_checkin(
     db: Session = Depends(get_db),
 ):
     hoje = date.today()
-    fim = hoje + timedelta(days=30)
+    fim = hoje + timedelta(days=75)
     query = _query_treinos_visiveis(principal, db).filter(Treino.data >= hoje, Treino.data <= fim)
 
-    treinos = query.order_by(Treino.data.asc()).all()
-    sabados = []
+    treinos = query.order_by(Treino.data.asc(), Treino.hora.asc(), Treino.modalidade.asc()).all()
+
+    mes_atual = hoje.month
+    ano_atual = hoje.year
+    if mes_atual == 12:
+        proximo_mes = 1
+        ano_proximo_mes = ano_atual + 1
+    else:
+        proximo_mes = mes_atual + 1
+        ano_proximo_mes = ano_atual
+
+    treinos_mes_atual = []
+    treinos_proximo_mes = []
+
     for t in treinos:
-        if t.data.weekday() == 5:  # sábado
-            sabados.append({
-                "id": t.id,
-                "dia": t.data.day,
-                "mes": t.data.month,
-                "ano": t.data.year,
-                "local": t.local,
-                "horario": str(t.hora)[:5],
-                "modalidade": t.modalidade,
-                "vagas_disponiveis": t.vagas_disponiveis,
-            })
-        if len(sabados) >= 4:
-            break
-    return sabados
+        item = {
+            "id": t.id,
+            "dia": t.data.day,
+            "mes": t.data.month,
+            "ano": t.data.year,
+            "local": t.local,
+            "horario": str(t.hora)[:5],
+            "modalidade": t.modalidade,
+            "vagas_disponiveis": t.vagas_disponiveis,
+        }
+
+        if t.data.month == mes_atual and t.data.year == ano_atual:
+            treinos_mes_atual.append(item)
+            continue
+
+        if t.data.month == proximo_mes and t.data.year == ano_proximo_mes:
+            treinos_proximo_mes.append(item)
+
+    return [*treinos_mes_atual, *treinos_proximo_mes[:2]]
 
 
 @router.get("/checkins/calendario-me")
@@ -346,12 +429,16 @@ def get_calendario_checkin_me(
     )
 
     checkins = []
-    if user_id is not None:
-        checkins = (
-            db.query(Checkin)
-            .filter(Checkin.usuario_id == user_id, Checkin.treino_id.in_([t.id for t in treinos]))
-            .all()
-        )
+    if user_id is not None and treinos:
+        try:
+            checkins = (
+                db.query(Checkin)
+                .filter(Checkin.usuario_id == user_id, Checkin.treino_id.in_([t.id for t in treinos]))
+                .all()
+            )
+        except SQLAlchemyError:
+            # Compatibilidade com schema legado de checkins que não possui usuario_id.
+            checkins = []
     checkin_by_treino = {row.treino_id: row for row in checkins}
     cancelamentos = _cancelamento_map([row.id for row in checkins], db)
 
@@ -381,32 +468,71 @@ def list_me_checkins(
     if user_id is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Somente atletas podem consultar check-ins")
 
-    rows = (
-        db.query(Checkin)
-        .filter(Checkin.usuario_id == user_id)
-        .order_by(Checkin.id.desc())
-        .all()
-    )
-    cancelamentos = _cancelamento_map([row.id for row in rows], db)
-    treinos_map = {
-        treino.id: treino
-        for treino in db.query(Treino)
-        .filter(Treino.id.in_([row.treino_id for row in rows]))
-        .all()
-    }
-    response = []
-    for row in rows:
-        treino = treinos_map.get(row.treino_id)
-        cancelamento = cancelamentos.get(row.id)
-        item = {
-            **_checkin_to_dict(row),
-            "cancelado": bool(cancelamento),
-            "justificativa_cancelamento": cancelamento.justificativa if cancelamento else None,
+    try:
+        rows = (
+            db.query(Checkin)
+            .filter(Checkin.usuario_id == user_id)
+            .order_by(Checkin.id.desc())
+            .all()
+        )
+        cancelamentos = _cancelamento_map([row.id for row in rows], db)
+        treinos_map = {
+            treino.id: treino
+            for treino in db.query(Treino)
+            .filter(Treino.id.in_([row.treino_id for row in rows]))
+            .all()
         }
-        if treino:
-            item["treino"] = _treino_to_dict(treino)
-        response.append(item)
-    return response
+        response = []
+        for row in rows:
+            treino = treinos_map.get(row.treino_id)
+            cancelamento = cancelamentos.get(row.id)
+            item = {
+                **_checkin_to_dict(row),
+                "cancelado": bool(cancelamento),
+                "justificativa_cancelamento": cancelamento.justificativa if cancelamento else None,
+            }
+            if treino:
+                item["treino"] = _treino_to_dict(treino)
+            response.append(item)
+        return response
+    except SQLAlchemyError:
+        user = db.query(Usuario).filter(Usuario.id == user_id).first()
+        if not user:
+            return []
+
+        legacy_rows = db.execute(
+            text(
+                """
+                SELECT c.id, c.treino_id, cc.justificativa
+                FROM checkins c
+                LEFT JOIN checkins_cancelamentos cc ON cc.checkin_id = c.id
+                WHERE c.usuario_email = :user_email
+                ORDER BY c.id DESC
+                """
+            ),
+            {"user_email": user.email},
+        ).all()
+
+        treino_ids = [row.treino_id for row in legacy_rows]
+        treinos_map = {
+            treino.id: treino
+            for treino in db.query(Treino).filter(Treino.id.in_(treino_ids)).all()
+        }
+
+        response = []
+        for row in legacy_rows:
+            item = {
+                "id": row.id,
+                "usuario_id": user_id,
+                "treino_id": row.treino_id,
+                "cancelado": row.justificativa is not None,
+                "justificativa_cancelamento": row.justificativa,
+            }
+            treino = treinos_map.get(row.treino_id)
+            if treino:
+                item["treino"] = _treino_to_dict(treino)
+            response.append(item)
+        return response
 
 
 @router.get("/notificacoes/me")
@@ -558,26 +684,62 @@ def create_me_checkin(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Treino nao encontrado")
     _assert_checkin_aberto_para_confirmacao(treino)
 
-    existing = (
-        db.query(Checkin)
-        .filter(Checkin.usuario_id == user_id, Checkin.treino_id == payload.treino_id)
-        .first()
-    )
-    if existing:
-        cancelamento = db.query(CheckinCancelamento).filter(CheckinCancelamento.checkin_id == existing.id).first()
-        if cancelamento:
-            db.delete(cancelamento)
-            db.add(NotificacaoProfessor(treino_id=treino.id, usuario_id=user_id, acao="checkin"))
-            db.commit()
-        return _checkin_to_dict(existing)
+    try:
+        existing = (
+            db.query(Checkin)
+            .filter(Checkin.usuario_id == user_id, Checkin.treino_id == payload.treino_id)
+            .first()
+        )
+        if existing:
+            cancelamento = db.query(CheckinCancelamento).filter(CheckinCancelamento.checkin_id == existing.id).first()
+            if cancelamento:
+                if treino.vagas_disponiveis <= 0:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Nao ha vagas disponiveis para este treino")
+                db.delete(cancelamento)
+                treino.vagas_disponiveis = max(treino.vagas_disponiveis - 1, 0)
+                db.add(NotificacaoProfessor(treino_id=treino.id, usuario_id=user_id, acao="checkin"))
+                db.commit()
+            return _checkin_to_dict(existing)
 
-    row = Checkin(usuario_id=user_id, treino_id=payload.treino_id)
-    db.add(row)
-    db.flush()
-    db.add(NotificacaoProfessor(treino_id=treino.id, usuario_id=user_id, acao="checkin"))
-    db.commit()
-    db.refresh(row)
-    return _checkin_to_dict(row)
+        if treino.vagas_disponiveis <= 0:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Nao ha vagas disponiveis para este treino")
+
+        row = Checkin(usuario_id=user_id, treino_id=payload.treino_id)
+        db.add(row)
+        db.flush()
+        treino.vagas_disponiveis = max(treino.vagas_disponiveis - 1, 0)
+        db.add(NotificacaoProfessor(treino_id=treino.id, usuario_id=user_id, acao="checkin"))
+        db.commit()
+        db.refresh(row)
+        return _checkin_to_dict(row)
+    except SQLAlchemyError:
+        user = db.query(Usuario).filter(Usuario.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Atleta nao encontrado")
+
+        existing = _legacy_find_checkin(db, user_email=user.email, treino_id=payload.treino_id)
+        if existing:
+            cancelamento = db.query(CheckinCancelamento).filter(CheckinCancelamento.checkin_id == existing.id).first()
+            if cancelamento:
+                if treino.vagas_disponiveis <= 0:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Nao ha vagas disponiveis para este treino")
+                db.delete(cancelamento)
+                treino.vagas_disponiveis = max(treino.vagas_disponiveis - 1, 0)
+                db.add(NotificacaoProfessor(treino_id=treino.id, usuario_id=user_id, acao="checkin"))
+                db.commit()
+            return {"id": existing.id, "usuario_id": user_id, "treino_id": payload.treino_id}
+
+        if treino.vagas_disponiveis <= 0:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Nao ha vagas disponiveis para este treino")
+
+        created = _legacy_create_checkin(db, user_email=user.email, treino_id=payload.treino_id)
+        if not created:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Falha ao registrar check-in")
+
+        treino.vagas_disponiveis = max(treino.vagas_disponiveis - 1, 0)
+        db.add(NotificacaoProfessor(treino_id=treino.id, usuario_id=user_id, acao="checkin"))
+        db.commit()
+        return {"id": created.id, "usuario_id": user_id, "treino_id": payload.treino_id}
 
 
 @router.post("/checkins/me/{treino_id}/cancelar")
@@ -596,25 +758,53 @@ def cancel_me_checkin(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Treino nao encontrado")
     _assert_cancelamento_no_prazo(treino)
 
-    row = db.query(Checkin).filter(Checkin.usuario_id == user_id, Checkin.treino_id == treino_id).first()
-    if not row:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Check-in nao encontrado")
+    try:
+        row = db.query(Checkin).filter(Checkin.usuario_id == user_id, Checkin.treino_id == treino_id).first()
+        if not row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Check-in nao encontrado")
 
-    existing_cancel = db.query(CheckinCancelamento).filter(CheckinCancelamento.checkin_id == row.id).first()
-    if existing_cancel:
-        existing_cancel.justificativa = payload.justificativa.strip()
-    else:
-        db.add(CheckinCancelamento(checkin_id=row.id, justificativa=payload.justificativa.strip()))
-    db.add(
-        NotificacaoProfessor(
-            treino_id=treino_id,
-            usuario_id=user_id,
-            acao="cancelamento",
-            justificativa=payload.justificativa.strip(),
+        existing_cancel = db.query(CheckinCancelamento).filter(CheckinCancelamento.checkin_id == row.id).first()
+        if existing_cancel:
+            existing_cancel.justificativa = payload.justificativa.strip()
+        else:
+            db.add(CheckinCancelamento(checkin_id=row.id, justificativa=payload.justificativa.strip()))
+            treino.vagas_disponiveis = min(treino.vagas_disponiveis + 1, treino.vagas_total)
+        db.add(
+            NotificacaoProfessor(
+                treino_id=treino_id,
+                usuario_id=user_id,
+                acao="cancelamento",
+                justificativa=payload.justificativa.strip(),
+            )
         )
-    )
-    db.commit()
-    return {"status": "ok"}
+        db.commit()
+        return {"status": "ok"}
+    except SQLAlchemyError:
+        user = db.query(Usuario).filter(Usuario.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Atleta nao encontrado")
+
+        row = _legacy_find_checkin(db, user_email=user.email, treino_id=treino_id)
+        if not row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Check-in nao encontrado")
+
+        existing_cancel = db.query(CheckinCancelamento).filter(CheckinCancelamento.checkin_id == row.id).first()
+        if existing_cancel:
+            existing_cancel.justificativa = payload.justificativa.strip()
+        else:
+            db.add(CheckinCancelamento(checkin_id=row.id, justificativa=payload.justificativa.strip()))
+            treino.vagas_disponiveis = min(treino.vagas_disponiveis + 1, treino.vagas_total)
+
+        db.add(
+            NotificacaoProfessor(
+                treino_id=treino_id,
+                usuario_id=user_id,
+                acao="cancelamento",
+                justificativa=payload.justificativa.strip(),
+            )
+        )
+        db.commit()
+        return {"status": "ok"}
 
 
 @router.delete("/checkins/me/{treino_id}")

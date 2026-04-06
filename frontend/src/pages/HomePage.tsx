@@ -55,6 +55,7 @@ export function HomePage() {
   const [checkinFeitos, setCheckinFeitos] = useState<number[]>([]);
   const [modalCheckin, setModalCheckin] = useState<DiaSabado | null>(null);
   const [modalCancelar, setModalCancelar] = useState<DiaSabado | null>(null);
+  const [zoomCardId, setZoomCardId] = useState<number | null>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [naoLidas, setNaoLidas] = useState(0);
 
@@ -146,6 +147,18 @@ export function HomePage() {
     }
   }
 
+  function handleCardCheckinClick(sabado: DiaSabado, feito: boolean) {
+    setZoomCardId(sabado.id);
+    window.setTimeout(() => {
+      setZoomCardId(null);
+      if (!feito) {
+        setModalCheckin(sabado);
+      } else {
+        setModalCancelar(sabado);
+      }
+    }, 140);
+  }
+
   return (
     <div style={{ background: "#181818", minHeight: "100vh", width: "100vw", display: "flex", justifyContent: "center", alignItems: "center", paddingTop: 24, paddingBottom: 24 }}>
       <div style={{ width: 393, height: 852, position: "relative", background: "#212020", overflow: "hidden", borderRadius: 20, fontFamily: "Poppins, sans-serif", boxShadow: "0 0 32px 0 rgba(0,0,0,0.45)", border: "2px solid #fff" }}>
@@ -228,8 +241,8 @@ export function HomePage() {
         </div>
 
         {/* Próximos Treinos */}
-        <div style={{ position: "absolute", left: 0, top: 220, width: 393, height: 150, background: "#fffbe9", borderTop: "1.5px solid #E0A443", borderBottom: "1.5px solid #E0A443", zIndex: 1, padding: "14px 0 0 0" }} />
-        <div style={{ position: "absolute", left: 20, top: 226, width: "calc(100% - 20px)", zIndex: 2 }}>
+        <div style={{ position: "absolute", left: 0, top: 220, width: 393, height: 170, background: "#fffbe9", borderTop: "1.5px solid #E0A443", borderBottom: "1.5px solid #E0A443", zIndex: 1, padding: "14px 0 0 0" }} />
+        <div style={{ position: "absolute", left: 20, top: 228, width: "calc(100% - 20px)", zIndex: 2 }}>
           <div style={{ color: "#E0A443", fontSize: 15, fontWeight: 700, marginBottom: 6 }}>Próximos Treinos</div>
           <div ref={checkinScrollRef} className="checkin-rapido-scroll">
             {diasCheckin.length === 0 ? (
@@ -238,14 +251,14 @@ export function HomePage() {
               diasCheckin.map((sabado, idx) => {
                 const feito = checkinFeitos.includes(sabado.id);
                 return (
-                  <div key={idx} style={{ minWidth: 92, maxWidth: 92, background: "#fff8ec", borderRadius: 10, padding: "6px", display: "flex", flexDirection: "column", gap: 2, borderLeft: "3px solid #E0A443", fontFamily: "Poppins, sans-serif", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(224,164,67,0.10)" }}>
-                    <div style={{ fontWeight: 700, fontSize: 11, color: "#232323" }}>{String(sabado.dia).padStart(2, "0")}/{String(sabado.mes).padStart(2, "0")}/{sabado.ano}</div>
-                    <div style={{ fontSize: 8, color: "#6b7280" }}>{sabado.local}</div>
-                    <div style={{ fontSize: 8, color: "#E0A443", fontWeight: 600 }}>{sabado.horario}</div>
-                    <div style={{ fontSize: 8, color: "#43E07E", fontWeight: 600 }}>{sabado.modalidade}</div>
+                  <div key={idx} style={{ minWidth: 126, maxWidth: 126, background: "linear-gradient(180deg, #fff7eb 0%, #ffeed6 100%)", borderRadius: 12, padding: "8px", display: "flex", flexDirection: "column", gap: 4, borderLeft: "4px solid #D79A2C", border: "1px solid rgba(176, 118, 27, 0.28)", fontFamily: "Poppins, sans-serif", alignItems: "flex-start", justifyContent: "center", boxShadow: zoomCardId === sabado.id ? "0 12px 22px rgba(119, 72, 13, 0.26), inset 0 1px 0 rgba(255,255,255,0.55)" : "0 8px 16px rgba(119, 72, 13, 0.18), inset 0 1px 0 rgba(255,255,255,0.55)", transform: zoomCardId === sabado.id ? "scale(1.06)" : "scale(1)", transition: "transform 160ms ease, box-shadow 160ms ease" }}>
+                    <div style={{ fontWeight: 700, fontSize: 12, color: "#232323" }}>{String(sabado.dia).padStart(2, "0")}/{String(sabado.mes).padStart(2, "0")}/{sabado.ano}</div>
+                    <div style={{ fontSize: 9, color: "#6b7280", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%" }}>{sabado.local}</div>
+                    <div style={{ fontSize: 9, color: "#E0A443", fontWeight: 700 }}>{sabado.horario}</div>
+                    <div style={{ fontSize: 9, color: "#43E07E", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%" }}>{sabado.modalidade}</div>
                     <button
-                      style={{ marginTop: 4, background: "#43E07E", color: "#fff", border: "none", borderRadius: 6, padding: "3px 0", minWidth: 52, fontWeight: 700, fontSize: 9, cursor: feito ? "default" : "pointer", opacity: feito ? 0.7 : 1, fontFamily: "Poppins, sans-serif" }}
-                      onClick={() => { if (!feito) setModalCheckin(sabado); else setModalCancelar(sabado); }}
+                      style={{ marginTop: 4, background: "#43E07E", color: "#fff", border: "none", borderRadius: 7, padding: "5px 0", width: "100%", fontWeight: 700, fontSize: 10, cursor: feito ? "default" : "pointer", opacity: feito ? 0.7 : 1, fontFamily: "Poppins, sans-serif" }}
+                      onClick={() => handleCardCheckinClick(sabado, feito)}
                     >
                       {feito ? "✓ Confirmado" : "Check-in"}
                     </button>
@@ -258,14 +271,17 @@ export function HomePage() {
 
         {/* Desafio GymRats */}
         <a href="https://www.gymrats.app/" target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
-          <div style={{ position: "absolute", top: 380, left: 0, width: 393, height: 181, background: "#E0A443", zIndex: 1 }} />
-          <div style={{ position: "absolute", top: 410, left: 34, width: 162, height: 125, background: "#212020", borderRadius: 20, zIndex: 2 }} />
-          <div style={{ position: "absolute", top: 432, left: 50, color: "#E0A443", fontSize: 16, fontWeight: 500, lineHeight: "25px", zIndex: 3 }}>
-            <div>Desafio Bimestral</div>
-            <div>GymRats</div>
+          <div style={{ position: "absolute", top: 409, left: 0, width: 393, height: 150, background: "#E0A443", zIndex: 1 }} />
+          <div style={{ position: "absolute", top: 422, left: 28, width: 235, height: 126, background: "#1f1f23", borderRadius: 28, zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 8, boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)" }}>
+            <div style={{ transform: "translateX(-20px)" }}>
+              <div style={{ color: "#E0A443", fontSize: 16, fontWeight: 700, lineHeight: 1.35 }}>
+                <div>Desafio Bimestral</div>
+                <div>GymRats</div>
+              </div>
+              <div style={{ marginTop: 10, color: "#f6f7fb", fontSize: 11, fontWeight: 500, lineHeight: 1 }}>Clique Aqui</div>
+            </div>
           </div>
-          <div style={{ position: "absolute", top: 490, left: 50, color: "white", fontSize: 12, zIndex: 3 }}>Clique aqui!</div>
-          <img src="/gymrats-logo.png" alt="Desafio" style={{ position: "absolute", top: 395, left: 210, width: 157, height: 150, borderRadius: 20, objectFit: "cover", zIndex: 3 }} />
+          <img src="/gymrats-logo.png" alt="Desafio GymRats" style={{ position: "absolute", top: 422, left: 214, width: 142, height: 126, borderRadius: 34, border: "3px solid #1F8DFF", objectFit: "cover", zIndex: 3, boxShadow: "0 12px 28px rgba(31, 141, 255, 0.22)" }} />
         </a>
 
         {/* Recomendações */}
@@ -273,7 +289,7 @@ export function HomePage() {
           Recomendações
         </button>
         <button onClick={() => navigate("/recomendacoes")} type="button" style={{ position: "absolute", left: 280, top: 581, color: "white", fontSize: 12, fontWeight: 500, display: "flex", alignItems: "center", gap: 6, background: "transparent", padding: 0 }}>
-          Ver Todas <FaPlay color="#FBC343" size={10} />
+          Ver tudo <FaPlay color="#FBC343" size={10} />
         </button>
         <div style={{ position: "absolute", left: 18, top: 606, display: "flex", gap: 14 }}>
           {DICAS.map((dica) => (

@@ -42,6 +42,29 @@ class AuthService:
         role = payload["role"]
         return self._build_tokens(subject=subject, role=role)
 
+    def forgot_password(self, login: str, nova_senha: str) -> dict:
+        value = login.strip()
+        if not value:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Informe um login valido")
+        if len(nova_senha.strip()) < 4:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A nova senha deve ter ao menos 4 caracteres")
+
+        senha = nova_senha.strip()
+
+        admin = self.repo.find_admin_by_username(value)
+        if admin:
+            admin.password = senha
+            self.repo.db.commit()
+            return {"message": "Senha redefinida com sucesso."}
+
+        user = self.repo.find_user_by_email(value.lower())
+        if user:
+            user.senha = senha
+            self.repo.db.commit()
+            return {"message": "Senha redefinida com sucesso."}
+
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Login nao encontrado")
+
     @staticmethod
     def _build_tokens(*, subject: str, role: str) -> dict:
         return {

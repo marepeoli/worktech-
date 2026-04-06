@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=Playfair+Display:wght@700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=Poppins:wght@600;700;800&display=swap");
 
 :root {
   font-family: "Montserrat", sans-serif;
@@ -78,6 +78,33 @@ input:focus {
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
 
+.password-input-wrap {
+  position: relative;
+}
+
+.password-input-wrap input {
+  padding-right: 44px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: transparent;
+  color: #374151;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.password-toggle:hover {
+  background: rgba(17, 24, 39, 0.08);
+}
+
 button {
   border: none;
   font-family: inherit;
@@ -91,6 +118,13 @@ button:disabled {
 
 .error {
   color: #dc2626;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.info {
+  color: #065f46;
   margin: 0;
   font-size: 13px;
   font-weight: 600;
@@ -115,6 +149,7 @@ button:disabled {
 .phone-shell {
   width: min(100%, 390px);
   min-height: 760px;
+  font-family: "Poppins", sans-serif;
   background: linear-gradient(180deg, #1d1f28 0%, #171922 60%, #14161d 100%);
   border-radius: 26px;
   border: 1px solid #5a5f6c;
@@ -148,7 +183,7 @@ button:disabled {
   font-weight: 800;
   letter-spacing: -0.5px;
   color: #ffffff;
-  font-family: "Playfair Display", serif;
+  font-family: "Poppins", sans-serif;
 }
 
 .login-brand p {
@@ -167,6 +202,15 @@ button:disabled {
   border-bottom-left-radius: 24px;
   border-bottom-right-radius: 24px;
   padding: 24px 22px 20px;
+}
+
+.login-credit {
+  margin: 14px 0 0;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(232, 236, 242, 0.82);
+  letter-spacing: 0.4px;
+  font-weight: 600;
 }
 
 .form-vamp {
@@ -189,6 +233,36 @@ button:disabled {
   opacity: 0.8;
 }
 
+.reset-password-box {
+  display: grid;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.26);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.reset-password-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.btn-reset-submit {
+  height: 40px;
+  border-radius: 10px;
+  background: #5178cf;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.btn-reset-cancel {
+  height: 40px;
+  border-radius: 10px;
+  background: #374151;
+  color: #ffffff;
+  font-weight: 700;
+}
+
 .btn-primary {
   margin: 20px auto 0;
   width: 220px;
@@ -197,14 +271,15 @@ button:disabled {
   font-weight: 700;
   font-size: 22px;
   color: #ffffff;
-  background: linear-gradient(180deg, #6366f1 0%, #4f46e5 100%);
-  box-shadow: 0 10px 22px rgba(99, 102, 241, 0.34);
+  background: #5178cf;
+  box-shadow: 0 10px 22px rgba(81, 120, 207, 0.34);
   transition: all 0.3s ease;
 }
 
 .btn-primary:hover:not(:disabled) {
+  background: #466bb8;
   transform: translateY(-2px);
-  box-shadow: 0 14px 28px rgba(99, 102, 241, 0.48);
+  box-shadow: 0 14px 28px rgba(81, 120, 207, 0.48);
 }
 
 .btn-google {
@@ -225,6 +300,7 @@ button:disabled {
 .home-mobile-shell {
   width: min(100%, 393px);
   min-height: 852px;
+  font-family: "Poppins", sans-serif;
   border-radius: 22px;
   border: 1px solid rgba(255, 255, 255, 0.4);
   padding: 14px 14px 74px;
@@ -490,6 +566,9 @@ button:disabled {
   scrollbar-width: none;
   cursor: grab;
   user-select: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
 }
 
 .checkin-rapido-scroll::-webkit-scrollbar {
