@@ -17,6 +17,7 @@ from app.db.models import (
     NotificacaoLeitura,
     NotificacaoProfessor,
     PresencaTreino,
+    ProfessorModalidade,
     Recommendation,
     Treino,
     Usuario,
@@ -268,6 +269,45 @@ def _is_professor_or_admin(principal: dict) -> bool:
     return principal["role"] in {"PROFESSOR", "ADMIN"}
 
 
+def _professor_matches_treino(prof_mod: ProfessorModalidade, treino: Treino) -> bool:
+    if prof_mod.modalidade != treino.modalidade:
+        return False
+
+    if not prof_mod.dia_semana or not prof_mod.dia_semana.isdigit():
+        return False
+
+    dia_num = int(prof_mod.dia_semana)
+    # professor_modalidades usa 0..6 (domingo..sabado) ou 1..7 (domingo..sabado)
+    if dia_num == 7:
+        dia_num = 0
+    if not (0 <= dia_num <= 6):
+        return False
+
+    treino_dia = (treino.data.weekday() + 1) % 7
+    if treino_dia != dia_num:
+        return False
+
+    return prof_mod.hora_inicio <= treino.hora <= prof_mod.hora_fim
+
+
+def _professor_can_access_treino(principal: dict, treino: Treino, db: Session) -> bool:
+    if principal["role"] == "ADMIN":
+        return True
+    if principal["role"] != "PROFESSOR":
+        return False
+
+    prof_id = _extract_user_id(principal["sub"])
+    if prof_id is None:
+        return False
+
+    prof_mods = (
+        db.query(ProfessorModalidade)
+        .filter(ProfessorModalidade.professor_id == prof_id)
+        .all()
+    )
+    return any(_professor_matches_treino(pm, treino) for pm in prof_mods)
+
+
 def _treino_datetime(treino: Treino) -> datetime:
     return datetime.combine(treino.data, treino.hora)
 
@@ -496,6 +536,7 @@ def list_me_checkins(
             response.append(item)
         return response
     except SQLAlchemyError:
+        db.rollback()
         user = db.query(Usuario).filter(Usuario.id == user_id).first()
         if not user:
             return []
@@ -697,7 +738,7 @@ def create_me_checkin(
                     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Nao ha vagas disponiveis para este treino")
                 db.delete(cancelamento)
                 treino.vagas_disponiveis = max(treino.vagas_disponiveis - 1, 0)
-                db.add(NotificacaoProfessor(treino_id=treino.id, usuario_id=user_id, acao="checkin"))
+                db.add(NotificacaoProfessor(treino_id=treino.id, usuario_id=user_id, acao="checkin", created_at=datetime.now()))
                 db.commit()
             return _checkin_to_dict(existing)
 
@@ -708,11 +749,12 @@ def create_me_checkin(
         db.add(row)
         db.flush()
         treino.vagas_disponiveis = max(treino.vagas_disponiveis - 1, 0)
-        db.add(NotificacaoProfessor(treino_id=treino.id, usuario_id=user_id, acao="checkin"))
+        db.add(NotificacaoProfessor(treino_id=treino.id, usuario_id=user_id, acao="checkin", created_at=datetime.now()))
         db.commit()
         db.refresh(row)
         return _checkin_to_dict(row)
     except SQLAlchemyError:
+        db.rollback()
         user = db.query(Usuario).filter(Usuario.id == user_id).first()
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Atleta nao encontrado")
@@ -725,7 +767,7 @@ def create_me_checkin(
                     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Nao ha vagas disponiveis para este treino")
                 db.delete(cancelamento)
                 treino.vagas_disponiveis = max(treino.vagas_disponiveis - 1, 0)
-                db.add(NotificacaoProfessor(treino_id=treino.id, usuario_id=user_id, acao="checkin"))
+                db.add(NotificacaoProfessor(treino_id=treino.id, usuario_id=user_id, acao="checkin", created_at=datetime.now()))
                 db.commit()
             return {"id": existing.id, "usuario_id": user_id, "treino_id": payload.treino_id}
 
@@ -737,7 +779,7 @@ def create_me_checkin(
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Falha ao registrar check-in")
 
         treino.vagas_disponiveis = max(treino.vagas_disponiveis - 1, 0)
-        db.add(NotificacaoProfessor(treino_id=treino.id, usuario_id=user_id, acao="checkin"))
+        db.add(NotificacaoProfessor(treino_id=treino.id, usuario_id=user_id, acao="checkin", created_at=datetime.now()))
         db.commit()
         return {"id": created.id, "usuario_id": user_id, "treino_id": payload.treino_id}
 
@@ -767,7 +809,13 @@ def cancel_me_checkin(
         if existing_cancel:
             existing_cancel.justificativa = payload.justificativa.strip()
         else:
-            db.add(CheckinCancelamento(checkin_id=row.id, justificativa=payload.justificativa.strip()))
+            db.add(
+                CheckinCancelamento(
+                    checkin_id=row.id,
+                    justificativa=payload.justificativa.strip(),
+                    created_at=datetime.now(),
+                )
+            )
             treino.vagas_disponiveis = min(treino.vagas_disponiveis + 1, treino.vagas_total)
         db.add(
             NotificacaoProfessor(
@@ -775,11 +823,13 @@ def cancel_me_checkin(
                 usuario_id=user_id,
                 acao="cancelamento",
                 justificativa=payload.justificativa.strip(),
+                created_at=datetime.now(),
             )
         )
         db.commit()
         return {"status": "ok"}
     except SQLAlchemyError:
+        db.rollback()
         user = db.query(Usuario).filter(Usuario.id == user_id).first()
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Atleta nao encontrado")
@@ -792,7 +842,13 @@ def cancel_me_checkin(
         if existing_cancel:
             existing_cancel.justificativa = payload.justificativa.strip()
         else:
-            db.add(CheckinCancelamento(checkin_id=row.id, justificativa=payload.justificativa.strip()))
+            db.add(
+                CheckinCancelamento(
+                    checkin_id=row.id,
+                    justificativa=payload.justificativa.strip(),
+                    created_at=datetime.now(),
+                )
+            )
             treino.vagas_disponiveis = min(treino.vagas_disponiveis + 1, treino.vagas_total)
 
         db.add(
@@ -801,6 +857,7 @@ def cancel_me_checkin(
                 usuario_id=user_id,
                 acao="cancelamento",
                 justificativa=payload.justificativa.strip(),
+                created_at=datetime.now(),
             )
         )
         db.commit()
@@ -888,22 +945,30 @@ def list_professor_notificacoes(
 
 @router.get("/professor/treinos")
 def list_treinos_professor(
-    _: dict = Depends(require_roles("PROFESSOR", "ADMIN")),
+    principal: dict = Depends(require_roles("PROFESSOR", "ADMIN")),
     db: Session = Depends(get_db),
 ):
-    rows = db.query(Treino).order_by(Treino.data.asc(), Treino.hora.asc()).all()
-    return [_treino_to_dict(row) for row in rows]
+    today = date.today()
+    rows = db.query(Treino).filter(Treino.data >= today).order_by(Treino.data.asc(), Treino.hora.asc()).all()
+    if principal["role"] == "ADMIN":
+        return [_treino_to_dict(row) for row in rows]
+
+    filtrados = [row for row in rows if _professor_can_access_treino(principal, row, db)]
+    return [_treino_to_dict(row) for row in filtrados]
 
 
 @router.get("/professor/treinos/{treino_id}/presenca")
 def list_presenca_treino(
     treino_id: int,
-    _: dict = Depends(require_roles("PROFESSOR", "ADMIN")),
+    principal: dict = Depends(require_roles("PROFESSOR", "ADMIN")),
     db: Session = Depends(get_db),
 ):
     treino = db.query(Treino).filter(Treino.id == treino_id).first()
     if not treino:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Treino nao encontrado")
+
+    if not _professor_can_access_treino(principal, treino, db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Treino fora do escopo do professor")
 
     checkins = db.query(Checkin).filter(Checkin.treino_id == treino_id).all()
     cancelamentos = _cancelamento_map([row.id for row in checkins], db)
@@ -940,6 +1005,9 @@ def update_presenca_treino(
     treino = db.query(Treino).filter(Treino.id == treino_id).first()
     if not treino:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Treino nao encontrado")
+
+    if not _professor_can_access_treino(principal, treino, db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Treino fora do escopo do professor")
 
     checkin = db.query(Checkin).filter(Checkin.treino_id == treino_id, Checkin.usuario_id == usuario_id).first()
     if not checkin:

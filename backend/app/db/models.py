@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Date, ForeignKey, Integer, Text, Time, UniqueConstraint
+from sqlalchemy import Boolean, Date, ForeignKey, Integer, Text, Time, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -15,6 +15,7 @@ class Usuario(Base):
     nome: Mapped[str] = mapped_column(Text, nullable=False)
     email: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     senha: Mapped[str] = mapped_column(Text, nullable=False)
+    role: Mapped[str] = mapped_column(Text, nullable=False, default="USER")
     created_at: Mapped[datetime]
 
 
@@ -131,4 +132,30 @@ class NotificacaoLeitura(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     usuario_id: Mapped[int] = mapped_column(ForeignKey("usuario.id"), nullable=False)
     referencia: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime]
+
+
+class ProfessorModalidade(Base):
+    __tablename__ = "professor_modalidades"
+    __table_args__ = (UniqueConstraint("professor_id", "modalidade", "dia_semana", name="uq_professor_mod_dia"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    professor_id: Mapped[int] = mapped_column(ForeignKey("usuario.id"), nullable=False)
+    modalidade: Mapped[str] = mapped_column(Text, nullable=False)
+    dia_semana: Mapped[str] = mapped_column(Text, nullable=False)
+    hora_inicio: Mapped[Time] = mapped_column(Time, nullable=False)
+    hora_fim: Mapped[Time] = mapped_column(Time, nullable=False)
+    created_at: Mapped[datetime]
+
+
+class Presenca(Base):
+    __tablename__ = "presencas"
+    __table_args__ = (UniqueConstraint("usuario_id", "treino_id", name="uq_presenca_usuario_treino"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    usuario_id: Mapped[int] = mapped_column(ForeignKey("usuario.id"), nullable=False)
+    treino_id: Mapped[int] = mapped_column(ForeignKey("treinos.id"), nullable=False)
+    professor_id: Mapped[int] = mapped_column(ForeignKey("usuario.id"), nullable=False)
+    presente: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    observacoes: Mapped[str] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime]

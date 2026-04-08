@@ -25,7 +25,8 @@ class AuthService:
 
         user = self.repo.find_user_by_email(login)
         if user and verify_password(senha, user.senha):
-            return self._build_tokens(subject=f"user:{user.id}", role="USER")
+            role = getattr(user, 'role', 'USER')
+            return self._build_tokens(subject=f"user:{user.id}", role=role)
 
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 

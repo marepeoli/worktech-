@@ -149,7 +149,7 @@ export function NotificationsPage() {
                   }}
                 >
                   <div style={{ color: item.tipo === "evento" ? "#E0A443" : "#43E07E", fontSize: 11, fontWeight: 700, marginBottom: 5 }}>
-                    {item.tipo === "evento" ? "Evento" : "Recomendação"} {item.lida ? "• Lida" : "• Nova"}
+                    {item.tipo === "evento" ? "Evento" : "Recomendação"} {item.lida ? "• Lida" : "• Não lida"}
                   </div>
                   <div style={{ color: "#232323", fontSize: 15, fontWeight: 700 }}>{item.titulo}</div>
                   <div style={{ color: "#6b7280", fontSize: 12, marginTop: 4, lineHeight: 1.3 }}>{item.descricao}</div>

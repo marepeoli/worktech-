@@ -22,11 +22,20 @@ type CheckinItem = {
   id: number;
   usuario_id: number;
   treino_id: number;
+  cancelado?: boolean;
 };
 
 type NotificationSummary = {
   nao_lidas: number;
 };
+
+function getErrorMessage(error: unknown): string {
+  if (typeof error === "object" && error !== null && "response" in error) {
+    const maybeResponse = error as { response?: { data?: { detail?: string } } };
+    if (maybeResponse.response?.data?.detail) return maybeResponse.response.data.detail;
+  }
+  return "Não foi possível concluir a ação. Tente novamente.";
+}
 
 const DICAS = [
   {
@@ -49,6 +58,7 @@ export function HomePage() {
   const navigate = useNavigate();
   const { principal, logout } = useAuth();
   const isAdmin = principal?.role === "ADMIN";
+  const isProfessor = principal?.role === "PROFESSOR";
   const nomeExibicao = principal?.nome ?? (principal?.role === "ADMIN" ? "Admin" : "Atleta");
 
   const [diasCheckin, setDiasCheckin] = useState<DiaSabado[]>([]);
@@ -60,6 +70,15 @@ export function HomePage() {
   const [naoLidas, setNaoLidas] = useState(0);
 
   const checkinScrollRef = useRef<HTMLDivElement>(null);
+
+  async function refreshCheckinsFromApi(): Promise<void> {
+    const checkinsRes = await api.get<CheckinItem[]>("/checkins/me");
+    setCheckinFeitos(
+      Array.isArray(checkinsRes.data)
+        ? checkinsRes.data.filter((item) => !item.cancelado).map((item) => item.treino_id)
+        : []
+    );
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -73,7 +92,11 @@ export function HomePage() {
         if (!isMounted) return;
 
         setDiasCheckin(Array.isArray(diasRes.data) ? diasRes.data : []);
-        setCheckinFeitos(Array.isArray(checkinsRes.data) ? checkinsRes.data.map((item) => item.treino_id) : []);
+        setCheckinFeitos(
+          Array.isArray(checkinsRes.data)
+            ? checkinsRes.data.filter((item) => !item.cancelado).map((item) => item.treino_id)
+            : []
+        );
         setNaoLidas(typeof notificacoesRes.data?.nao_lidas === "number" ? notificacoesRes.data.nao_lidas : 0);
       })
       .catch(() => {
@@ -128,9 +151,10 @@ export function HomePage() {
 
     try {
       await api.post("/checkins/me", { treino_id: sabado.id });
-      setCheckinFeitos((prev) => [...prev, sabado.id]);
-    } catch {
-      // Keep current state when API check-in fails.
+      setCheckinFeitos((prev) => (prev.includes(sabado.id) ? prev : [...prev, sabado.id]));
+      await refreshCheckinsFromApi();
+    } catch (error) {
+      window.alert(getErrorMessage(error));
     } finally {
       setModalCheckin(null);
     }
@@ -140,8 +164,9 @@ export function HomePage() {
     try {
       await api.delete(`/checkins/me/${sabado.id}`);
       setCheckinFeitos((prev) => prev.filter((id) => id !== sabado.id));
-    } catch {
-      // Keep current state when API cancel fails.
+      await refreshCheckinsFromApi();
+    } catch (error) {
+      window.alert(getErrorMessage(error));
     } finally {
       setModalCancelar(null);
     }
@@ -207,6 +232,12 @@ export function HomePage() {
                     Admin
                   </div>
                 )}
+                {isProfessor && (
+                  <div style={{ padding: "12px 20px", color: "#FFB84D", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, fontWeight: 600, fontSize: 15 }}
+                    onClick={() => { setShowUserMenu(false); navigate("/presenca"); }}>
+                    Presença
+                  </div>
+                )}
                 <div style={{ padding: "12px 20px", color: "#d9534f", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, fontWeight: 600, fontSize: 15 }}
                   onClick={logout}>
                   <FaSignOutAlt /> Sair
@@ -251,16 +282,16 @@ export function HomePage() {
               diasCheckin.map((sabado, idx) => {
                 const feito = checkinFeitos.includes(sabado.id);
                 return (
-                  <div key={idx} style={{ minWidth: 126, maxWidth: 126, background: "linear-gradient(180deg, #fff7eb 0%, #ffeed6 100%)", borderRadius: 12, padding: "8px", display: "flex", flexDirection: "column", gap: 4, borderLeft: "4px solid #D79A2C", border: "1px solid rgba(176, 118, 27, 0.28)", fontFamily: "Poppins, sans-serif", alignItems: "flex-start", justifyContent: "center", boxShadow: zoomCardId === sabado.id ? "0 12px 22px rgba(119, 72, 13, 0.26), inset 0 1px 0 rgba(255,255,255,0.55)" : "0 8px 16px rgba(119, 72, 13, 0.18), inset 0 1px 0 rgba(255,255,255,0.55)", transform: zoomCardId === sabado.id ? "scale(1.06)" : "scale(1)", transition: "transform 160ms ease, box-shadow 160ms ease" }}>
+                  <div key={idx} style={{ minWidth: 126, maxWidth: 126, background: "linear-gradient(180deg, #fff7eb 0%, #ffeed6 100%)", borderRadius: 12, padding: "8px", display: "flex", flexDirection: "column", gap: 4, borderLeft: "4px solid #D79A2C", border: zoomCardId === sabado.id ? "1px solid rgba(176, 118, 27, 0.5)" : "1px solid rgba(176, 118, 27, 0.28)", fontFamily: "Poppins, sans-serif", alignItems: "flex-start", justifyContent: "center", boxShadow: zoomCardId === sabado.id ? "0 4px 10px rgba(119, 72, 13, 0.16)" : "0 2px 6px rgba(119, 72, 13, 0.10)", transform: zoomCardId === sabado.id ? "scale(1.04)" : "scale(1)", transition: "transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease" }}>
                     <div style={{ fontWeight: 700, fontSize: 12, color: "#232323" }}>{String(sabado.dia).padStart(2, "0")}/{String(sabado.mes).padStart(2, "0")}/{sabado.ano}</div>
                     <div style={{ fontSize: 9, color: "#6b7280", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%" }}>{sabado.local}</div>
                     <div style={{ fontSize: 9, color: "#E0A443", fontWeight: 700 }}>{sabado.horario}</div>
                     <div style={{ fontSize: 9, color: "#43E07E", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%" }}>{sabado.modalidade}</div>
                     <button
-                      style={{ marginTop: 4, background: "#43E07E", color: "#fff", border: "none", borderRadius: 7, padding: "5px 0", width: "100%", fontWeight: 700, fontSize: 10, cursor: feito ? "default" : "pointer", opacity: feito ? 0.7 : 1, fontFamily: "Poppins, sans-serif" }}
+                      style={{ marginTop: 4, background: feito ? "#d9534f" : "#43E07E", color: "#fff", border: "none", borderRadius: 7, padding: "5px 0", width: "100%", fontWeight: 700, fontSize: 10, cursor: "pointer", opacity: 1, fontFamily: "Poppins, sans-serif" }}
                       onClick={() => handleCardCheckinClick(sabado, feito)}
                     >
-                      {feito ? "✓ Confirmado" : "Check-in"}
+                      {feito ? "Cancelar check-in" : "Check-in"}
                     </button>
                   </div>
                 );

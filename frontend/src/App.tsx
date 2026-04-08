@@ -11,6 +11,7 @@ import { RecommendationsPage } from "./pages/RecommendationsPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { CheckinPage } from "./pages/CheckinPage";
+import { PresencaPage } from "./pages/PresencaPage";
 
 export function App() {
   return (
@@ -79,6 +80,16 @@ export function App() {
         element={
           <ProtectedRoute>
             <NotificationsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/presenca"
+        element={
+          <ProtectedRoute>
+            <RoleRoute allowedRoles={["PROFESSOR"]}>
+              <PresencaPage />
+            </RoleRoute>
           </ProtectedRoute>
         }
       />

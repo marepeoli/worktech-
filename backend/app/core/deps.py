@@ -1,9 +1,19 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.orm import Session
 
 from app.core.security import TokenError, decode_token
+from app.db.session import SessionLocal
 
 bearer = HTTPBearer(auto_error=False)
+
+
+def get_db() -> Session:
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 def get_current_principal(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)) -> dict:
